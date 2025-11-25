@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+# from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from transformers import BertTokenizer, BertForSequenceClassification
 import torch
 import re
 from collections import Counter
@@ -27,25 +28,14 @@ st.set_page_config(
 @st.cache_resource
 def load_sentiment_model():
     try:
-        model_name = "w11wo/indobert-large-p1-twitter-indonesia-sarcastic"
+        # model_name = "w11wo/indobert-large-p1-twitter-indonesia-sarcastic"
         # model_name = "w11wo/indonesian-roberta-base-sentiment-classifier"
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        model = AutoModelForSequenceClassification.from_pretrained(model_name)
+        model_name = "agufsamudra/indo-sentiment-analysis"
+        tokenizer = BertTokenizer.from_pretrained(model_name)
+        model = BertForSequenceClassification.from_pretrained(model_name)
+        st.success("✅ Indo Sentiment Analysis model loaded!")
         return tokenizer, model
-        # model_options = [
-        #     "w11wo/indonesian-roberta-base-sentiment-classifier",
-        #     "indolem/indobert-base-uncased", 
-        #     "nlp-id/indonesian-sentiment-analysis"
-        # ]
         
-        # for model_name in model_options:
-        #     try:
-        #         tokenizer = AutoTokenizer.from_pretrained(model_name)
-        #         model = AutoModelForSequenceClassification.from_pretrained(model_name)
-        #         st.success(f"✅ Model {model_name} berhasil dimuat")
-        #         return tokenizer, model
-        #     except:
-        #         continue
     except Exception as e:
         st.error(f"Error loading model: {e}")
         return None, None
@@ -53,7 +43,7 @@ def load_sentiment_model():
 # Fungsi untuk analisis sentimen (fallback jika model tidak bisa load)
 def analyze_sentiment(text, tokenizer, model):
     if tokenizer is None or model is None:
-        # Fallback simple sentiment analysis
+        # Fallback ke lexicon-based (tetap pertahankan ini)
         negative_words = ['lama', 'tunggu', 'telat', 'macet', 'penuh', 'rusak', 'jelek', 'buruk', 'sebel', 'kesal', 'marah', 'frustrasi']
         positive_words = ['bagus', 'baik', 'nyaman', 'cepat', 'murah', 'puas', 'senang', 'recommend', 'enak', 'mantap']
         
@@ -68,21 +58,33 @@ def analyze_sentiment(text, tokenizer, model):
         else:
             return "Netral", 0.5
     
-    # Original model-based analysis
-    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True, max_length=128)
+    # MODEL BARU - menggunakan agufsamudra/indo-sentiment-analysis
+    inputs = tokenizer(text, return_tensors="pt", padding="max_length", truncation=True, max_length=128)
     
     with torch.no_grad():
         outputs = model(**inputs)
     
-    predictions = torch.nn.functional.softmax(outputs.logits, dim=-1)
-    predicted_class = torch.argmax(predictions, dim=1).item()
+    logits = outputs.logits
+    prediction = logits.argmax(-1).item()
     
-    # Mapping kelas: 0=negative, 1=neutral, 2=positive
-    sentiment_labels = ["Negatif", "Netral", "Positif"]
-    confidence = predictions[0][predicted_class].item()
+    # Mapping untuk model ini: 0=Negative, 1=Positive
+    # TAPI perlu kita test dulu untuk memastikan mappingnya
+    sentiment_labels = ["Negatif", "Positif"]  # Default mapping
     
-    return sentiment_labels[predicted_class], confidence
-
+    # Untuk sementara, kita asumsikan:
+    # prediction = 0 → Negatif
+    # prediction = 1 → Positif
+    
+    # Karena model ini hanya punya 2 kelas (Positive/Negative), 
+    # kita perlu handle Netral secara manual
+    probabilities = torch.nn.functional.softmax(logits, dim=-1)
+    confidence = probabilities[0][prediction].item()
+    
+    # Jika confidence rendah, klasifikasikan sebagai Netral
+    if confidence < 0.6:  # Threshold bisa disesuaikan
+        return "Netral", confidence
+    else:
+        return sentiment_labels[prediction], confidence
 # GOOD KEYWORDS DICTIONARY - BISA DIISI NANTI
 good_keywords={
     # KELOMPOK TWEER POSITIF & NETRAL DISNI
@@ -1121,6 +1123,7 @@ if st.session_state.new_comments:
     if st.button("🔄 Reset Data Baru", type="secondary"):
         st.session_state.new_comments = []
         st.rerun()
+
 
 
 
