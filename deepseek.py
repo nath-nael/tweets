@@ -41,9 +41,10 @@ def load_sentiment_model():
         return None, None
 
 # Fungsi untuk analisis sentimen (fallback jika model tidak bisa load)
+# Fungsi untuk analisis sentimen (fallback jika model tidak bisa load)
 def analyze_sentiment(text, tokenizer, model):
     if tokenizer is None or model is None:
-        # Fallback ke lexicon-based (tetap pertahankan ini)
+        # Fallback ke lexicon-based (HANYA Positif & Negatif)
         negative_words = ['lama', 'tunggu', 'telat', 'macet', 'penuh', 'rusak', 'jelek', 'buruk', 'sebel', 'kesal', 'marah', 'frustrasi']
         positive_words = ['bagus', 'baik', 'nyaman', 'cepat', 'murah', 'puas', 'senang', 'recommend', 'enak', 'mantap']
         
@@ -56,7 +57,8 @@ def analyze_sentiment(text, tokenizer, model):
         elif negative_count > positive_count:
             return "Negatif", 0.7
         else:
-            return "Netral", 0.5
+            # Jika sama, default ke Positif (sesuai trial_df yang hanya punya 2 label)
+            return "Positif", 0.5
     
     # MODEL BARU - menggunakan agufsamudra/indo-sentiment-analysis
     inputs = tokenizer(text, return_tensors="pt", padding="max_length", truncation=True, max_length=128)
@@ -68,23 +70,15 @@ def analyze_sentiment(text, tokenizer, model):
     prediction = logits.argmax(-1).item()
     
     # Mapping untuk model ini: 0=Negative, 1=Positive
-    # TAPI perlu kita test dulu untuk memastikan mappingnya
-    sentiment_labels = ["Negatif", "Positif"]  # Default mapping
+    # Karena trial_df hanya punya Positif & Negatif, kita HILANGKAN Netral
+    sentiment_labels = ["Negatif", "Positif"]  # Hanya 2 kelas
     
-    # Untuk sementara, kita asumsikan:
-    # prediction = 0 → Negatif
-    # prediction = 1 → Positif
-    
-    # Karena model ini hanya punya 2 kelas (Positive/Negative), 
-    # kita perlu handle Netral secara manual
     probabilities = torch.nn.functional.softmax(logits, dim=-1)
     confidence = probabilities[0][prediction].item()
     
-    # Jika confidence rendah, klasifikasikan sebagai Netral
-    if confidence < 0.6:  # Threshold bisa disesuaikan
-        return "Netral", confidence
-    else:
-        return sentiment_labels[prediction], confidence
+    # TIDAK ADA NETRAL - langsung return Positif/Negatif berdasarkan prediction
+    return sentiment_labels[prediction], confidence
+
 # GOOD KEYWORDS DICTIONARY - BISA DIISI NANTI
 good_keywords={
     # KELOMPOK TWEER POSITIF & NETRAL DISNI
@@ -710,15 +704,30 @@ st.markdown("""
 st.markdown('<div class="main-header">🚍 Dashboard Analisis Sentimen Transportasi Jakarta</div>', unsafe_allow_html=True)
 
 # Load data
+# Load data
 @st.cache_data
 def load_data():
     try:
-        df = pd.read_csv("final_df.csv")
-        st.success("✅ Data berhasil dimuat dari final_df.csv")
+        df = pd.read_csv("trial_df.csv")
+        
+        # Pastikan kolom Sentiment hanya ada Positif dan Negatif
+        if 'Sentiment' in df.columns:
+            # Clean sentiment values
+            df['Sentiment'] = df['Sentiment'].str.strip().str.capitalize()
+            # Map ke hanya Positif/Negatif
+            sentiment_mapping = {
+                'Positive': 'Positif',
+                'Negative': 'Negatif', 
+                'Positif': 'Positif',
+                'Negatif': 'Negatif'
+            }
+            df['Sentiment'] = df['Sentiment'].map(sentiment_mapping).fillna('Positif')  # Default ke Positif jika unknown
+        
+        st.success(f"✅ Data berhasil dimuat dari trial_df.csv: {len(df)} baris")
         return df
     except Exception as e:
-        st.warning(f"⚠️ Tidak dapat memuat final_df.csv: {e}. Menggunakan data sample...")
-        # Fallback data sample
+        st.warning(f"⚠️ Tidak dapat memuat trial_df.csv: {e}. Menggunakan data sample...")
+        # Fallback data sample HANYA Positif & Negatif
         data = {
             'Kategori': ['jak', 'jak', 'tj', 'tj', 'krl', 'krl', 'jak', 'tj'],
             'Tweet': [
@@ -745,7 +754,6 @@ def load_data():
         }
         df = pd.DataFrame(data)
         return df
-
 df = load_data()
 
 # Preprocess problem data - FIXED VERSION
@@ -828,14 +836,14 @@ if analyze_btn and new_comment:
         sentiment, confidence = analyze_sentiment(new_comment, tokenizer, model)
         
         # Deteksi masalah dan good aspects berdasarkan sentimen
-        if sentiment in ["Negatif"]:
+        if sentiment == "Negatif":  # Hanya Negatif
             detected_items = detect_problems(new_comment)
             item_type = "Masalah"
             item_title = "Masalah Terdeteksi"
-        else:  # Positif atau Netral
+        else:  # Hanya Positif (tidak ada Netral)
             detected_items = detect_good_aspects(new_comment)
-            item_type = "Aspek Baik"
-            item_title = "Aspek Positif/Netral"
+            item_type = "Aspek Baik" 
+            item_title = "Aspek Positif Terdeteksi"
         
         # Tampilkan hasil
         st.success("✅ Analisis selesai!")
@@ -904,13 +912,12 @@ def create_transport_tab(category, category_name):
         st.warning(f"📭 Tidak ada data untuk {category_name}")
         return
     
-    # Metrics
-    col1, col2, col3, col4 = st.columns(4)
+    # Metrics - HANYA Positif & Negatif
+    col1, col2, col3 = st.columns(3)  # Ubah dari 4 jadi 3 kolom
     
     total_tweets = len(category_data)
     positive_tweets = len(category_data[category_data['Sentiment'] == 'Positif'])
     negative_tweets = len(category_data[category_data['Sentiment'] == 'Negatif'])
-    neutral_tweets = len(category_data[category_data['Sentiment'] == 'Netral'])
     
     with col1:
         st.markdown(f'''
@@ -925,6 +932,7 @@ def create_transport_tab(category, category_name):
         <div class="metric-card">
             <h3>Positif</h3>
             <h2 style="color: #28a745;">{positive_tweets}</h2>
+            <p>{positive_tweets/total_tweets*100:.1f}%</p>
         </div>
         ''', unsafe_allow_html=True)
     
@@ -933,23 +941,16 @@ def create_transport_tab(category, category_name):
         <div class="metric-card">
             <h3>Negatif</h3>
             <h2 style="color: #dc3545;">{negative_tweets}</h2>
-        </div>
-        ''', unsafe_allow_html=True)
-    
-    with col4:
-        st.markdown(f'''
-        <div class="metric-card">
-            <h3>Netral</h3>
-            <h2 style="color: #ffc107;">{neutral_tweets}</h2>
+            <p>{negative_tweets/total_tweets*100:.1f}%</p>
         </div>
         ''', unsafe_allow_html=True)
     
     # Visualisasi Top Problems/Good Aspects berdasarkan sentimen
     st.markdown(f'<div class="sub-header">📊 Top 5 Aspek pada {category_name}</div>', unsafe_allow_html=True)
     
-    # Pisahkan data negatif dan positif/netral
+    # Pisahkan data negatif dan positif (TIDAK ADA NETRAL)
     negative_data = category_data[category_data['Sentiment'] == 'Negatif']
-    positive_neutral_data = category_data[category_data['Sentiment'].isin(['Positif', 'Netral'])]
+    positive_data = category_data[category_data['Sentiment'] == 'Positif']  # Hanya positif
     
     # Untuk data negatif: hitung masalah
     negative_problems = []
@@ -957,9 +958,9 @@ def create_transport_tab(category, category_name):
         if problems:
             negative_problems.extend(problems)
     
-    # Untuk data positif/netral: hitung good aspects
+    # Untuk data positif: hitung good aspects
     positive_aspects = []
-    for aspects in positive_neutral_data['problems_clean']:
+    for aspects in positive_data['problems_clean']:
         if aspects:
             positive_aspects.extend(aspects)
     
@@ -990,7 +991,7 @@ def create_transport_tab(category, category_name):
             x='Count', 
             y='Aspek',
             orientation='h',
-            title=f'Top 5 Aspek Positif/Netral {category_name}',
+            title=f'Top 5 Aspek Positif {category_name}',
             color='Count',
             color_continuous_scale='greens'
         )
@@ -1008,7 +1009,7 @@ def create_transport_tab(category, category_name):
         )
         st.plotly_chart(fig, use_container_width=True)
     
-    # Visualisasi distribusi sentimen dan tren
+    # Visualisasi distribusi sentimen - HANYA Positif & Negatif
     col1, col2 = st.columns([2, 1])
     
     with col1:
@@ -1023,8 +1024,8 @@ def create_transport_tab(category, category_name):
                 color=sentiment_counts.index,
                 color_discrete_map={
                     'Positif': '#28a745',
-                    'Negatif': '#dc3545', 
-                    'Netral': '#ffc107'
+                    'Negatif': '#dc3545'
+                    # Tidak ada Netral
                 }
             )
             fig_pie.update_layout(
@@ -1045,6 +1046,57 @@ def create_transport_tab(category, category_name):
             st.dataframe(aspect_freq, use_container_width=True, height=300)
         else:
             st.info("ℹ️ Belum ada data aspek")
+    
+    # Tweet terbaru - Hanya tampilkan yang memiliki aspek terdeteksi
+    st.markdown(f'<div class="sub-header">💬 Tweet Terbaru tentang {category_name}</div>', unsafe_allow_html=True)
+    
+    # Filter hanya tweet yang memiliki aspek terdeteksi
+    tweets_with_aspects = category_data[category_data['problems_clean'].apply(lambda x: len(x) > 0)]
+    
+    if not tweets_with_aspects.empty:
+        recent_tweets = tweets_with_aspects.tail(8).iloc[::-1]  # Reverse untuk dapat yang terbaru di atas
+        
+        for _, tweet in recent_tweets.iterrows():
+            sentiment_class = f"sentiment-{tweet['Sentiment'].lower()}"
+            
+            # Tentukan jenis tag berdasarkan sentimen
+            if tweet['Sentiment'] == 'Negatif':
+                tag_class = "problem-tag"
+            else:
+                tag_class = "good-tag"
+            
+            # Handle aspects display
+            aspects_html = ""
+            if tweet['problems_clean'] and len(tweet['problems_clean']) > 0:
+                aspects_html = "<div class='problems-container'>"
+                for aspect in tweet['problems_clean']:
+                    if aspect and str(aspect).strip():
+                        aspects_html += f'<span class="{tag_class}">{aspect}</span>'
+                aspects_html += "</div>"
+            
+            # Highlight new comments
+            is_new = any(tweet['Tweet'] == nc['Tweet'] for nc in st.session_state.new_comments)
+            border_color = "#ff6b6b" if is_new else "var(--primary-color)"
+            
+            # Fixed HTML structure
+            tweet_html = f"""
+            <div class="tweet-card" style="border-left-color: {border_color};">
+                <p class="tweet-text">{tweet['Tweet']}</p>
+                <div class="tweet-footer">
+                    <div class="problems-container">
+                        {aspects_html}
+                    </div>
+                    <div style="text-align: right; min-width: 80px;">
+                        <p class="{sentiment_class}" style="margin: 0; font-size: 0.8rem;">{tweet['Sentiment']}</p>
+                        {'<p style="margin: 0; font-size: 0.7rem; color: #ff6b6b;">🆕 Baru</p>' if is_new else ''}
+                    </div>
+                </div>
+            </div>
+            """
+            
+            st.markdown(tweet_html, unsafe_allow_html=True)
+    else:
+        st.info("ℹ️ Tidak ada tweet dengan aspek yang terdeteksi")
     
     # Tweet terbaru - Hanya tampilkan yang memiliki aspek terdeteksi
     st.markdown(f'<div class="sub-header">💬 Tweet Terbaru tentang {category_name}</div>', unsafe_allow_html=True)
@@ -1118,6 +1170,7 @@ if st.session_state.new_comments:
     if st.button("🔄 Reset Data Baru", type="secondary"):
         st.session_state.new_comments = []
         st.rerun()
+
 
 
 
