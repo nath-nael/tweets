@@ -4,119 +4,73 @@ import plotly.express as px
 import plotly.graph_objects as go
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
-from datetime import datetime
 import re
+from collections import Counter
+import numpy as np
+import ast
 
-# Page configuration
+# Fix for numpy compatibility
+try:
+    np.bool8 = np.bool_  # For compatibility with older code
+except:
+    pass
+
+# Konfigurasi halaman
 st.set_page_config(
-    page_title="Dashboard Analisis Transportasi Jakarta",
-    page_icon="🚌",
+    page_title="Analisis Sentimen Transportasi Jakarta",
+    page_icon="🚍",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
-st.markdown("""
-<style>
-    .main-header {
-        font-size: 2.5rem;
-        font-weight: 700;
-        color: #1E40AF;
-        text-align: center;
-        margin-bottom: 2rem;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
-    }
-    
-    .tweet-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 1.5rem;
-        border-radius: 15px;
-        margin: 1rem 0;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        color: white;
-        transition: transform 0.3s ease;
-    }
-    
-    .tweet-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 6px 12px rgba(0,0,0,0.15);
-    }
-    
-    .tweet-text {
-        font-size: 1rem;
-        line-height: 1.6;
-        margin-bottom: 0.5rem;
-    }
-    
-    .tweet-meta {
-        font-size: 0.85rem;
-        opacity: 0.9;
-        font-style: italic;
-    }
-    
-    .sentiment-positive {
-        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
-    }
-    
-    .sentiment-negative {
-        background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
-    }
-    
-    .sentiment-neutral {
-        background: linear-gradient(135deg, #4b6cb7 0%, #182848 100%);
-    }
-    
-    .stat-card {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        text-align: center;
-    }
-    
-    .stat-value {
-        font-size: 2rem;
-        font-weight: 700;
-        color: #1E40AF;
-    }
-    
-    .stat-label {
-        font-size: 0.9rem;
-        color: #6B7280;
-        margin-top: 0.5rem;
-    }
-    
-    .input-section {
-        background: #F9FAFB;
-        padding: 2rem;
-        border-radius: 15px;
-        margin: 2rem 0;
-        border: 2px solid #E5E7EB;
-    }
-    
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 2rem;
-    }
-    
-    .stTabs [data-baseweb="tab"] {
-        height: 50px;
-        padding: 0 2rem;
-        font-size: 1.1rem;
-        font-weight: 600;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# Load model (cached)
+# Load model HuggingFace
 @st.cache_resource
-def load_model():
-    model_name = "w11wo/indobert-large-p1-twitter-indonesia-sarcastic"
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForSequenceClassification.from_pretrained(model_name)
-    return tokenizer, model
+def load_sentiment_model():
+    try:
+        model_name = "w11wo/indobert-large-p1-twitter-indonesia-sarcastic"
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model = AutoModelForSequenceClassification.from_pretrained(model_name)
+        return tokenizer, model
+    except Exception as e:
+        st.error(f"Error loading model: {e}")
+        return None, None
 
-# Problem keywords from documen
-PROBLEM_KEYWORDS= {
+# Fungsi untuk analisis sentimen (fallback jika model tidak bisa load)
+def analyze_sentiment(text, tokenizer, model):
+    if tokenizer is None or model is None:
+        # Fallback simple sentiment analysis
+        negative_words = ['lama', 'tunggu', 'telat', 'macet', 'penuh', 'rusak', 'jelek', 'buruk', 'sebel', 'kesal', 'marah', 'frustrasi']
+        positive_words = ['bagus', 'baik', 'nyaman', 'cepat', 'murah', 'puas', 'senang', 'recommend', 'enak', 'mantap']
+        
+        text_lower = text.lower()
+        negative_count = sum(1 for word in negative_words if word in text_lower)
+        positive_count = sum(1 for word in positive_words if word in text_lower)
+        
+        if positive_count > negative_count:
+            return "Positif", 0.7
+        elif negative_count > positive_count:
+            return "Negatif", 0.7
+        else:
+            return "Netral", 0.5
+    
+    # Original model-based analysis
+    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True, max_length=128)
+    
+    with torch.no_grad():
+        outputs = model(**inputs)
+    
+    predictions = torch.nn.functional.softmax(outputs.logits, dim=-1)
+    predicted_class = torch.argmax(predictions, dim=1).item()
+    
+    # Mapping kelas: 0=negative, 1=neutral, 2=positive
+    sentiment_labels = ["Negatif", "Netral", "Positif"]
+    confidence = predictions[0][predicted_class].item()
+    
+    return sentiment_labels[predicted_class], confidence
+
+# Fungsi untuk deteksi problem
+def detect_problems(text):
+    problem_keywords= {
     'Keterlambatan': [
         'telat', 'terlambat', 'lambat', 'delay', 'nunggu', 'nungguin', 'ga dateng2', 'gk dtg dtg', 'gak nyampe',
         'gk dateng', 'ngetem', 'molor', 'lama banget', '1 jam lebih', 'kena delay', 'datengnya lama',
@@ -489,258 +443,508 @@ PROBLEM_KEYWORDS= {
         'polri dan ypktb siapkan pemimpin masa depan lewat kereta kader','realistis maksimalkan transpatriot kalo emang gabisa',
     ]
     }
-
-# Analyze sentiment
-def analyze_sentiment(text, tokenizer, model):
-    inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=512)
-    with torch.no_grad():
-        outputs = model(**inputs)
     
-    probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
-    sentiment_idx = torch.argmax(probs).item()
-    
-    sentiments = ['negatif', 'netral', 'positif']
-    return sentiments[sentiment_idx]
-
-# Detect problems
-def detect_problems(text):
+    detected_problems = []
     text_lower = text.lower()
-    detected = []
     
-    for problem, keywords in PROBLEM_KEYWORDS.items():
+    for problem, keywords in problems_keywords.items():
         for keyword in keywords:
             if keyword in text_lower:
-                detected.append(problem)
+                detected_problems.append(problem)
                 break
     
-    return detected if detected else ['Lainnya']
+    return list(set(detected_problems))
+
+# CSS styling yang adaptif untuk dark/light mode
+st.markdown("""
+<style>
+    .main-header {
+        font-size: 2.5rem;
+        color: var(--primary-color);
+        text-align: center;
+        margin-bottom: 2rem;
+        font-weight: bold;
+    }
+    .sub-header {
+        font-size: 1.5rem;
+        color: var(--secondary-color);
+        margin-bottom: 1rem;
+        font-weight: bold;
+    }
+    .tweet-card {
+        background-color: var(--background-color);
+        border-radius: 10px;
+        padding: 15px;
+        margin: 10px 0;
+        border-left: 5px solid var(--primary-color);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        font-family: Arial, sans-serif;
+        color: var(--text-color);
+        border: 1px solid var(--border-color);
+    }
+    .sentiment-positive {
+        color: #28a745;
+        font-weight: bold;
+    }
+    .sentiment-negative {
+        color: #dc3545;
+        font-weight: bold;
+    }
+    .sentiment-neutral {
+        color: #ffc107;
+        font-weight: bold;
+    }
+    .problem-tag {
+        background-color: var(--secondary-background-color);
+        color: var(--text-color);
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        margin: 2px;
+        display: inline-block;
+        border: 1px solid var(--border-color);
+    }
+    .metric-card {
+        background-color: var(--card-background-color);
+        color: var(--card-text-color);
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        text-align: center;
+        margin-bottom: 10px;
+        border: 1px solid var(--border-color);
+    }
+    .metric-card h3 {
+        color: var(--card-text-color) !important;
+        margin-bottom: 10px;
+        font-size: 1rem;
+    }
+    .metric-card h2 {
+        color: var(--card-text-color) !important;
+        margin: 0;
+        font-size: 1.8rem;
+    }
+    .metric-card p {
+        color: var(--card-text-color) !important;
+        margin: 5px 0 0 0;
+    }
+    .tweet-text {
+        margin: 0 0 10px 0;
+        font-size: 0.95rem;
+        line-height: 1.4;
+        color: var(--text-color);
+    }
+    .tweet-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 10px;
+    }
+    .problems-container {
+        margin-top: 8px;
+    }
+    
+    /* CSS Variables untuk Dark/Light Mode */
+    :root {
+        --primary-color: #1f77b4;
+        --secondary-color: #2e86ab;
+        --background-color: #f8f9fa;
+        --card-background-color: #ffffff;
+        --secondary-background-color: #e9ecef;
+        --text-color: #000000;
+        --card-text-color: #000000;
+        --border-color: #dee2e6;
+    }
+    
+    /* Dark Mode Styles */
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --primary-color: #4da8ff;
+            --secondary-color: #6cb8ff;
+            --background-color: #1e1e1e;
+            --card-background-color: #2d2d2d;
+            --secondary-background-color: #3d3d3d;
+            --text-color: #ffffff;
+            --card-text-color: #ffffff;
+            --border-color: #404040;
+        }
+    }
+    
+    /* Streamlit Dark Mode Compatibility */
+    .stApp {
+        background-color: var(--background-color);
+    }
+    
+    /* Memastikan text di sidebar juga adaptif */
+    .css-1d391kg, .css-12oz5g7, .css-1y4p8pa {
+        color: var(--text-color);
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Header utama
+st.markdown('<div class="main-header">🚍 Dashboard Analisis Sentimen Transportasi Jakarta</div>', unsafe_allow_html=True)
 
 # Load data
 @st.cache_data
 def load_data():
-    # Create sample data if file doesn't exist
     try:
-        df = pd.read_csv('final_df.csv')
-    except:
-        df = pd.DataFrame({
+        df = pd.read_csv("final_df.csv")
+        st.success("✅ Data berhasil dimuat dari final_df.csv")
+        return df
+    except Exception as e:
+        st.warning(f"⚠️ Tidak dapat memuat final_df.csv: {e}. Menggunakan data sample...")
+        # Fallback data sample
+        data = {
+            'Kategori': ['jak', 'jak', 'tj', 'tj', 'krl', 'krl', 'jak', 'tj'],
             'Tweet': [
-                'TransJakarta hari ini telat banget, nunggu 1 jam!',
-                'JakLingko nyaman dan bersih',
-                'KRL penuh sesak, AC mati lagi',
-                'Pelayanan sopir TJ kasar',
-                'JakLingko tepat waktu, mantap!'
+                'Jaklingko sangat nyaman dan tepat waktu hari ini',
+                'Saya menunggu Jaklingko terlalu lama, keterlambatan yang menyebalkan',
+                'Transjakarta AC-nya dingin dan sopirnya ramah',
+                'Bus Transjakarta penuh sesak dan tidak nyaman',
+                'KRL hari ini berjalan dengan lancar dan nyaman',
+                'KRL sangat padat dan berisik, tidak nyaman',
+                'Jaklingko gratis membuat pengeluaran bulanan lebih hemat',
+                'Rute Transjakarta semakin lengkap dan terintegrasi'
             ],
-            'Kategori': ['tj', 'jak', 'krl', 'tj', 'jak'],
-            'Sentiment': ['negatif', 'positif', 'negatif', 'negatif', 'positif'],
-            'problem': ['Keterlambatan', 'Lainnya', 'Kondisi', 'Pelayanan', 'Lainnya']
-        })
-    return df
+            'Sentiment': ['Positif', 'Negatif', 'Positif', 'Negatif', 'Positif', 'Negatif', 'Positif', 'Positif'],
+            'problem': [
+                "['Kenyamanan']",
+                "['Keterlambatan', 'Emosi/Frustrasi']",
+                "['Kenyamanan', 'Pelayanan']",
+                "['Kondisi', 'Kenyamanan']",
+                "['Kenyamanan']",
+                "['Kondisi', 'Kenyamanan']",
+                "['Harga']",
+                "['Akses/Rute']"
+            ]
+        }
+        df = pd.DataFrame(data)
+        return df
 
-# Initialize session state
-if 'df' not in st.session_state:
-    st.session_state.df = load_data()
+df = load_data()
+
+# Preprocess problem data - FIXED VERSION
+def preprocess_problems(problem_str):
+    if pd.isna(problem_str) or problem_str == '[]' or problem_str == '':
+        return []
+    
+    try:
+        # Coba parsing sebagai Python list
+        if isinstance(problem_str, str) and problem_str.startswith('['):
+            try:
+                problems = ast.literal_eval(problem_str)
+                if isinstance(problems, list):
+                    return [str(p).strip() for p in problems if p and str(p).strip()]
+            except:
+                pass
+        
+        # Fallback: manual parsing
+        if isinstance(problem_str, str):
+            # Remove brackets and quotes
+            clean_str = problem_str.strip("[]'\" ")
+            if clean_str:
+                # Split by comma and clean
+                problems = [p.strip().strip("'\"") for p in clean_str.split(',')]
+                return [p for p in problems if p]
+        
+        return []
+    except Exception as e:
+        return []
+
+# Apply preprocessing
+df['problems_clean'] = df['problem'].apply(preprocess_problems)
+
+# Debug info
+st.sidebar.markdown(f"**Dataset Info:** {len(df)} baris data dimuat")
+
+# Load model
+tokenizer, model = load_sentiment_model()
+
+# Sidebar untuk input analisis
+with st.sidebar:
+    st.markdown("### 🔍 Analisis Komentar Baru")
+    
+    new_comment = st.text_area(
+        "Masukkan komentar tentang transportasi:",
+        placeholder="Contoh: 'Jaklingko hari ini sangat nyaman dan tepat waktu'",
+        height=100
+    )
+    
+    transport_category = st.selectbox(
+        "Pilih kategori transportasi:",
+        ["jak", "tj", "krl"],
+        format_func=lambda x: {"jak": "JakLingko", "tj": "TransJakarta", "krl": "KRL"}[x]
+    )
+    
+    analyze_btn = st.button("Analisis Komentar", type="primary", use_container_width=True)
+    
+    st.markdown("---")
+    st.markdown("### ℹ️ Informasi")
+    st.markdown("""
+    Dashboard ini menganalisis sentimen dan masalah pada transportasi Jakarta:
+    - **JakLingko**: Mikrotrans terintegrasi
+    - **TransJakarta**: Bus Rapid Transit  
+    - **KRL**: Kereta Rel Listrik
+    """)
+
+# Global variable untuk menyimpan data baru
 if 'new_comments' not in st.session_state:
     st.session_state.new_comments = []
 
-# Load model
-tokenizer, model = load_model()
+# Proses analisis komentar baru
+if analyze_btn and new_comment:
+    with st.spinner("Menganalisis sentimen dan masalah..."):
+        # Analisis sentimen
+        sentiment, confidence = analyze_sentiment(new_comment, tokenizer, model)
+        
+        # Deteksi masalah
+        problems = detect_problems(new_comment)
+        
+        # Tampilkan hasil
+        st.success("✅ Analisis selesai!")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            sentiment_color = {
+                "Positif": "sentiment-positive",
+                "Negatif": "sentiment-negative", 
+                "Netral": "sentiment-neutral"
+            }
+            st.markdown(f'''
+            <div class="metric-card">
+                <h3>Sentimen</h3>
+                <p class="{sentiment_color[sentiment]}">{sentiment}</p>
+                <p>Confidence: {confidence:.2f}</p>
+            </div>
+            ''', unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown(f'''
+            <div class="metric-card">
+                <h3>Kategori</h3>
+                <p>{"JakLingko" if transport_category == "jak" else "TransJakarta" if transport_category == "tj" else "KRL"}</p>
+            </div>
+            ''', unsafe_allow_html=True)
+        
+        with col3:
+            problems_text = ", ".join(problems) if problems else "Tidak terdeteksi"
+            st.markdown(f'''
+            <div class="metric-card">
+                <h3>Masalah Terdeteksi</h3>
+                <p>{problems_text}</p>
+            </div>
+            ''', unsafe_allow_html=True)
+        
+        # Simpan ke session state
+        new_comment_data = {
+            'Kategori': transport_category,
+            'Tweet': new_comment,
+            'Sentiment': sentiment,
+            'problem': str(problems),
+            'problems_clean': problems
+        }
+        st.session_state.new_comments.append(new_comment_data)
+        
+        st.info("📝 Data telah ditambahkan. Visualisasi akan diperbarui.")
 
-# Header
-st.markdown('<h1 class="main-header">🚌 Dashboard Analisis Transportasi Jakarta</h1>', unsafe_allow_html=True)
+# Gabungkan data baru dengan data utama
+if st.session_state.new_comments:
+    new_df = pd.DataFrame(st.session_state.new_comments)
+    combined_df = pd.concat([df, new_df], ignore_index=True)
+else:
+    combined_df = df.copy()
 
-# Sidebar stats
-with st.sidebar:
-    st.header("📊 Statistik Keseluruhan")
+# Tabs untuk masing-masing transportasi
+tab1, tab2, tab3 = st.tabs(["🚐 JakLingko", "🚍 TransJakarta", "🚆 KRL"])
+
+def create_transport_tab(category, category_name):
+    # Filter data berdasarkan kategori
+    category_data = combined_df[combined_df['Kategori'] == category].copy()
     
-    total_tweets = len(st.session_state.df)
-    positive = len(st.session_state.df[st.session_state.df['Sentiment'] == 'positif'])
-    negative = len(st.session_state.df[st.session_state.df['Sentiment'] == 'negatif'])
-    neutral = len(st.session_state.df[st.session_state.df['Sentiment'] == 'netral'])
-    
-    st.metric("Total Tweet", total_tweets)
-    st.metric("Positif", positive, delta=f"{positive/total_tweets*100:.1f}%")
-    st.metric("Negatif", negative, delta=f"-{negative/total_tweets*100:.1f}%", delta_color="inverse")
-    st.metric("Netral", neutral, delta=f"{neutral/total_tweets*100:.1f}%")
-
-# Main tabs
-tab1, tab2, tab3 = st.tabs(["🚌 TransJakarta", "🚐 JakLingko", "🚊 KRL"])
-
-def create_tab_content(kategori, name):
-    df_filtered = st.session_state.df[st.session_state.df['Kategori'] == kategori]
-    
-    if len(df_filtered) == 0:
-        st.warning(f"Tidak ada data untuk {name}")
+    if category_data.empty:
+        st.warning(f"📭 Tidak ada data untuk {category_name}")
         return
     
-    # Statistics
-    col1, col2, col3 = st.columns(3)
+    # Metrics
+    col1, col2, col3, col4 = st.columns(4)
+    
+    total_tweets = len(category_data)
+    positive_tweets = len(category_data[category_data['Sentiment'] == 'Positif'])
+    negative_tweets = len(category_data[category_data['Sentiment'] == 'Negatif'])
+    neutral_tweets = len(category_data[category_data['Sentiment'] == 'Netral'])
+    
     with col1:
-        st.markdown(f'<div class="stat-card"><div class="stat-value">{len(df_filtered)}</div><div class="stat-label">Total Tweet</div></div>', unsafe_allow_html=True)
+        st.markdown(f'''
+        <div class="metric-card">
+            <h3>Total Tweet</h3>
+            <h2>{total_tweets}</h2>
+        </div>
+        ''', unsafe_allow_html=True)
+    
     with col2:
-        pos_pct = len(df_filtered[df_filtered['Sentiment'] == 'positif']) / len(df_filtered) * 100
-        st.markdown(f'<div class="stat-card"><div class="stat-value">{pos_pct:.1f}%</div><div class="stat-label">Sentimen Positif</div></div>', unsafe_allow_html=True)
+        st.markdown(f'''
+        <div class="metric-card">
+            <h3>Positif</h3>
+            <h2 style="color: #28a745;">{positive_tweets}</h2>
+        </div>
+        ''', unsafe_allow_html=True)
+    
     with col3:
-        neg_pct = len(df_filtered[df_filtered['Sentiment'] == 'negatif']) / len(df_filtered) * 100
-        st.markdown(f'<div class="stat-card"><div class="stat-value">{neg_pct:.1f}%</div><div class="stat-label">Sentimen Negatif</div></div>', unsafe_allow_html=True)
+        st.markdown(f'''
+        <div class="metric-card">
+            <h3>Negatif</h3>
+            <h2 style="color: #dc3545;">{negative_tweets}</h2>
+        </div>
+        ''', unsafe_allow_html=True)
     
-    st.markdown("<br>", unsafe_allow_html=True)
+    with col4:
+        st.markdown(f'''
+        <div class="metric-card">
+            <h3>Netral</h3>
+            <h2 style="color: #ffc107;">{neutral_tweets}</h2>
+        </div>
+        ''', unsafe_allow_html=True)
     
-    # Top 5 Problems
-    st.subheader(f"🔥 Top 5 Masalah {name}")
+    # Visualisasi 1: Top Problems
+    st.markdown(f'<div class="sub-header">📊 Top 5 Masalah pada {category_name}</div>', unsafe_allow_html=True)
     
-    problem_counts = df_filtered['problem'].value_counts().head(5)
+    # Extract all problems
+    all_problems = []
+    for problems in category_data['problems_clean']:
+        if problems:  # Only extend if problems is not empty
+            all_problems.extend(problems)
     
-    fig = go.Figure(data=[
-        go.Bar(
-            x=problem_counts.values,
-            y=problem_counts.index,
-            orientation='h',
-            marker=dict(
-                color=problem_counts.values,
-                colorscale='Reds',
-                showscale=True
-            ),
-            text=problem_counts.values,
-            textposition='auto',
-        )
-    ])
+    if all_problems:
+        problem_counts = Counter(all_problems)
+        top_problems = problem_counts.most_common(5)
+        
+        if top_problems:
+            problems_df = pd.DataFrame(top_problems, columns=['Problem', 'Count'])
+            
+            fig = px.bar(
+                problems_df, 
+                x='Count', 
+                y='Problem',
+                orientation='h',
+                title=f'Top 5 Masalah {category_name}',
+                color='Count',
+                color_continuous_scale='blues'
+            )
+            fig.update_layout(
+                showlegend=False, 
+                yaxis={'categoryorder':'total ascending'},
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='var(--text-color)')
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("ℹ️ Tidak ada masalah yang terdeteksi dalam data")
+    else:
+        st.info("ℹ️ Belum ada data masalah yang terdeteksi")
     
-    fig.update_layout(
-        title=f"Top 5 Masalah pada {name}",
-        xaxis_title="Jumlah Keluhan",
-        yaxis_title="Kategori Masalah",
-        height=400,
-        showlegend=False,
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-    
-    # Sentiment Distribution
-    col1, col2 = st.columns(2)
+    # Visualisasi 2: Layout columns
+    col1, col2 = st.columns([2, 1])
     
     with col1:
-        sentiment_counts = df_filtered['Sentiment'].value_counts()
-        fig_pie = px.pie(
-            values=sentiment_counts.values,
-            names=sentiment_counts.index,
-            title="Distribusi Sentimen",
-            color=sentiment_counts.index,
-            color_discrete_map={
-                'positif': '#10B981',
-                'negatif': '#EF4444',
-                'netral': '#6B7280'
-            }
-        )
-        fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-        st.plotly_chart(fig_pie, use_container_width=True)
+        st.markdown(f'<div class="sub-header">📈 Distribusi Sentimen</div>', unsafe_allow_html=True)
+        
+        sentiment_counts = category_data['Sentiment'].value_counts()
+        if not sentiment_counts.empty:
+            fig_pie = px.pie(
+                values=sentiment_counts.values,
+                names=sentiment_counts.index,
+                title=f'Distribusi Sentimen {category_name}',
+                color=sentiment_counts.index,
+                color_discrete_map={
+                    'Positif': '#28a745',
+                    'Negatif': '#dc3545', 
+                    'Netral': '#ffc107'
+                }
+            )
+            fig_pie.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='var(--text-color)')
+            )
+            st.plotly_chart(fig_pie, use_container_width=True)
+        else:
+            st.info("ℹ️ Tidak ada data sentimen")
     
     with col2:
-        problem_by_sentiment = df_filtered.groupby(['problem', 'Sentiment']).size().reset_index(name='count')
-        fig_bar = px.bar(
-            problem_by_sentiment,
-            x='problem',
-            y='count',
-            color='Sentiment',
-            title="Masalah berdasarkan Sentimen",
-            color_discrete_map={
-                'positif': '#10B981',
-                'negatif': '#EF4444',
-                'netral': '#6B7280'
-            }
-        )
-        st.plotly_chart(fig_bar, use_container_width=True)
+        st.markdown(f'<div class="sub-header">🔍 Tren Masalah</div>', unsafe_allow_html=True)
+        
+        if all_problems:
+            # Problem frequency table
+            problem_freq = pd.DataFrame(problem_counts.most_common(10), columns=['Problem', 'Frekuensi'])
+            st.dataframe(problem_freq, use_container_width=True, height=300)
+        else:
+            st.info("ℹ️ Belum ada data masalah")
     
-    # Recent tweets
-    st.subheader(f"💬 Tweet Terbaru {name}")
+    # Tweet terbaru - FIXED DISPLAY
+    st.markdown(f'<div class="sub-header">💬 Tweet Terbaru tentang {category_name}</div>', unsafe_allow_html=True)
     
-    recent_tweets = df_filtered.tail(10).iloc[::-1]
+    recent_tweets = category_data.tail(8).iloc[::-1]  # Reverse untuk dapat yang terbaru di atas
     
-    for idx, row in recent_tweets.iterrows():
-        sentiment_class = f"sentiment-{row['Sentiment']}"
-        st.markdown(f"""
-        <div class="tweet-card {sentiment_class}">
-            <div class="tweet-text">{row['Tweet']}</div>
-            <div class="tweet-meta">
-                Sentimen: <strong>{row['Sentiment'].upper()}</strong> | 
-                Problem: <strong>{row['problem']}</strong>
+    for _, tweet in recent_tweets.iterrows():
+        sentiment_class = f"sentiment-{tweet['Sentiment'].lower()}"
+        
+        # Handle problems display safely
+        problems_html = ""
+        if tweet['problems_clean'] and len(tweet['problems_clean']) > 0:
+            problems_html = "<div class='problems-container'>"
+            for problem in tweet['problems_clean']:
+                if problem and str(problem).strip():  # Only add if problem is not empty
+                    problems_html += f'<span class="problem-tag">{problem}</span>'
+            problems_html += "</div>"
+        
+        # Highlight new comments
+        is_new = any(tweet['Tweet'] == nc['Tweet'] for nc in st.session_state.new_comments)
+        border_color = "#ff6b6b" if is_new else "var(--primary-color)"
+        
+        # Fixed HTML structure
+        tweet_html = f"""
+        <div class="tweet-card" style="border-left-color: {border_color};">
+            <p class="tweet-text">{tweet['Tweet']}</p>
+            <div class="tweet-footer">
+                <div class="problems-container">
+                    {problems_html}
+                </div>
+                <div style="text-align: right; min-width: 80px;">
+                    <p class="{sentiment_class}" style="margin: 0; font-size: 0.8rem;">{tweet['Sentiment']}</p>
+                    {'<p style="margin: 0; font-size: 0.7rem; color: #ff6b6b;">🆕 Baru</p>' if is_new else ''}
+                </div>
             </div>
         </div>
-        """, unsafe_allow_html=True)
+        """
+        
+        st.markdown(tweet_html, unsafe_allow_html=True)
 
+# Isi masing-masing tab
 with tab1:
-    create_tab_content('tj', 'TransJakarta')
+    create_transport_tab('jak', 'JakLingko')
 
 with tab2:
-    create_tab_content('jak', 'JakLingko')
+    create_transport_tab('tj', 'TransJakarta')
 
 with tab3:
-    create_tab_content('krl', 'KRL')
-
-# Input section
-st.markdown("<br><br>", unsafe_allow_html=True)
-st.markdown('<div class="input-section">', unsafe_allow_html=True)
-st.subheader("✍️ Analisis Komentar Baru")
-
-col1, col2 = st.columns([3, 1])
-
-with col1:
-    user_comment = st.text_area(
-        "Masukkan komentar Anda tentang transportasi umum Jakarta:",
-        height=100,
-        placeholder="Contoh: TransJakarta hari ini telat 30 menit, capek nunggunya..."
-    )
-
-with col2:
-    kategori_input = st.selectbox(
-        "Pilih Moda:",
-        options=['tj', 'jak', 'krl'],
-        format_func=lambda x: {'tj': 'TransJakarta', 'jak': 'JakLingko', 'krl': 'KRL'}[x]
-    )
-
-if st.button("🔍 Analisis Komentar", type="primary", use_container_width=True):
-    if user_comment.strip():
-        with st.spinner("Menganalisis komentar..."):
-            # Analyze sentiment
-            sentiment = analyze_sentiment(user_comment, tokenizer, model)
-            
-            # Detect problems
-            problems = detect_problems(user_comment)
-            problem = problems[0] if problems else 'Lainnya'
-            
-            # Add to dataframe
-            new_row = pd.DataFrame({
-                'Tweet': [user_comment],
-                'Kategori': [kategori_input],
-                'Sentiment': [sentiment],
-                'problem': [problem]
-            })
-            
-            st.session_state.df = pd.concat([st.session_state.df, new_row], ignore_index=True)
-            
-            # Display results
-            st.success("✅ Analisis selesai!")
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Sentimen", sentiment.upper())
-            with col2:
-                st.metric("Problem Terdeteksi", problem)
-            with col3:
-                st.metric("Kategori", kategori_input.upper())
-            
-            st.info("💡 Dashboard telah diperbarui dengan data baru. Silakan cek tab yang sesuai!")
-            st.balloons()
-    else:
-        st.warning("⚠️ Mohon masukkan komentar terlebih dahulu.")
-
-st.markdown('</div>', unsafe_allow_html=True)
+    create_transport_tab('krl', 'KRL')
 
 # Footer
-st.markdown("<br><br>", unsafe_allow_html=True)
-st.markdown("""
-<div style='text-align: center; color: #6B7280; padding: 2rem;'>
-    <p>Dashboard Analisis Transportasi Jakarta | Dibuat dengan ❤️ menggunakan Streamlit</p>
-</div>
-""", unsafe_allow_html=True)
+st.markdown("---")
+st.markdown(
+    "<div style='color: var(--text-color);'>"
+    "<strong>Dashboard Analisis Sentimen Transportasi Jakarta</strong> | "
+    "Data diperbarui secara real-time dengan analisis AI | "
+    f"Total data: {len(combined_df)} komentar"
+    "</div>", 
+    unsafe_allow_html=True
+)
+
+# Tombol reset data baru
+if st.session_state.new_comments:
+    if st.button("🔄 Reset Data Baru", type="secondary"):
+        st.session_state.new_comments = []
+        st.rerun()
