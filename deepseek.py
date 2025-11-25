@@ -447,7 +447,7 @@ def detect_problems(text):
     detected_problems = []
     text_lower = text.lower()
     
-    for problem, keywords in problems_keywords.items():
+    for problem, keywords in problem_keywords.items():
         for keyword in keywords:
             if keyword in text_lower:
                 detected_problems.append(problem)
@@ -951,6 +951,7 @@ if st.session_state.new_comments:
     if st.button("🔄 Reset Data Baru", type="secondary"):
         st.session_state.new_comments = []
         st.rerun()
+
 
 
 
