@@ -27,8 +27,8 @@ st.set_page_config(
 @st.cache_resource
 def load_sentiment_model():
     try:
-        # model_name = "w11wo/indobert-large-p1-twitter-indonesia-sarcastic"
-        model_name = "w11wo/indonesian-roberta-base-sentiment-classifier"
+        model_name = "w11wo/indobert-large-p1-twitter-indonesia-sarcastic"
+        # model_name = "w11wo/indonesian-roberta-base-sentiment-classifier"
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         model = AutoModelForSequenceClassification.from_pretrained(model_name)
         return tokenizer, model
@@ -1121,6 +1121,7 @@ if st.session_state.new_comments:
     if st.button("🔄 Reset Data Baru", type="secondary"):
         st.session_state.new_comments = []
         st.rerun()
+
 
 
 
