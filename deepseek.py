@@ -28,10 +28,24 @@ st.set_page_config(
 def load_sentiment_model():
     try:
         # model_name = "w11wo/indobert-large-p1-twitter-indonesia-sarcastic"
-        model_name = "indonesia-nlp-sentiment-classification"
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        model = AutoModelForSequenceClassification.from_pretrained(model_name)
-        return tokenizer, model
+        # model_name = "w11wo/indonesian-roberta-base-sentiment-classifier"
+        # tokenizer = AutoTokenizer.from_pretrained(model_name)
+        # model = AutoModelForSequenceClassification.from_pretrained(model_name)
+        # return tokenizer, model
+        model_options = [
+            "w11wo/indonesian-roberta-base-sentiment-classifier",
+            "indolem/indobert-base-uncased", 
+            "nlp-id/indonesian-sentiment-analysis"
+        ]
+        
+        for model_name in model_options:
+            try:
+                tokenizer = AutoTokenizer.from_pretrained(model_name)
+                model = AutoModelForSequenceClassification.from_pretrained(model_name)
+                st.success(f"✅ Model {model_name} berhasil dimuat")
+                return tokenizer, model
+            except:
+                continue
     except Exception as e:
         st.error(f"Error loading model: {e}")
         return None, None
@@ -1107,4 +1121,5 @@ if st.session_state.new_comments:
     if st.button("🔄 Reset Data Baru", type="secondary"):
         st.session_state.new_comments = []
         st.rerun()
+
 
