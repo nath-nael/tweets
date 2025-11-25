@@ -917,8 +917,7 @@ def create_transport_tab(category, category_name):
                     <div class="problems-container">
                         {problems_html}
                     </div>
-                    
-                </div>
+        
             </div>
             """
             
@@ -952,6 +951,7 @@ if st.session_state.new_comments:
     if st.button("🔄 Reset Data Baru", type="secondary"):
         st.session_state.new_comments = []
         st.rerun()
+
 
 
 
