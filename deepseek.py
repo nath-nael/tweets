@@ -68,9 +68,92 @@ def analyze_sentiment(text, tokenizer, model):
     
     return sentiment_labels[predicted_class], confidence
 
-# Fungsi untuk deteksi problem
-def detect_problems(text):
-    problem_keywords= {
+# GOOD KEYWORDS DICTIONARY - BISA DIISI NANTI
+good_keywords={
+    # KELOMPOK TWEER POSITIF & NETRAL DISNI
+    'Kebersihan': [
+        'bersih', 'terawat', 'rapi', 'bersih dan rapi', 'terjaga', 'dalam kondisi bersih',
+        'tercipta kebersihan', 'nyaman', 'terbuka', 'terjaga kebersihan', 'tidak ada sampah',
+        'bersih banget', 'terjaga dengan baik', 'terawat dengan baik', 'bersih sekali', 'toilet bersih',
+        'ruang bersih', 'perawatan bersih', 'kondisi bersih', 'terjaga kebersihan', 'terawat dengan baik',
+        'kondisi bersih jaklingko', 'toilet bersih jaklingko', 'fasilitas bersih jaklingko',
+    ],
+    'Kenyamanan': [
+        'nyaman', 'sejuk', 'aman', 'rileks', 'fasilitas nyaman', 'selesai dengan nyaman', 'pemandangan bagus',
+        'tenang', 'santai', 'sesuai harapan', 'pemandangan bagus', 'enak', 'pas banget', 'lancar', 'baik-baik saja',
+        'fasilitas baru', 'ruang nyaman', 'tempat nyaman', 'tempat duduk nyaman', 'tempat yang nyaman', 'fasilitas enak',
+        'nyaman naik jaklingko', 'fasilitas nyaman jaklingko', 'tempat duduk nyaman jaklingko', 'jaklingko nyaman','seru bgt',
+        'aklingko tuh baru keren','kalau naik kereta api di lintas jakarta bandung banjar',
+    ],
+    'Kualitas Layanan': [
+        'ramah', 'efisien', 'cepat', 'tanggap', 'terpercaya', 'pelayannya baik', 'ramah sekali', 'tanggap sekali',
+        'terlayani dengan baik', 'sopannya', 'siap membantu', 'pelayanan maksimal', 'responsif', 'terbaik',
+        'pelayanan prima', 'layanan super', 'pelayanan memuaskan', 'pelayanan luar biasa', 'layanan terbaik',
+        'oleh bawa skuter lipat ke kereta antar kota','pt kereta api indonesia persero daerah operasi 1 jakarta',
+        'hai kak jika sudah melakukan pengisian data','pelayanan ramah jaklingko', 'tanggap pelayanan jaklingko',
+        'pelayanan cepat jaklingko', 'siap membantu jaklingko','saya pernah naik kereta kelas bisnis dari kota malang',
+        'knp kl naik jaklingko hrs tetep nge tap',
+    ],
+    'Harga': [
+        'terjangkau', 'hemat', 'murah', 'ekonomis', 'bisa dijangkau', 'biaya terjangkau', 'harga bersahabat',
+        'pas di kantong', 'biaya ringan', 'harga sesuai', 'harga pas', 'murah meriah', 'hematan', 'nilai terbaik',
+        'harga wajar', 'tarif terjangkau', 'hemat biaya', 'harga murah', 'biaya efektif', 'harga kompetitif',
+        'nilai terbaik', 'harga sesuai kualitas', 'biaya terjangkau sekali', 'harga murah jaklingko',
+        'harga terjangkau jaklingko', 'tarif jaklingko sesuai', 'harga jaklingko wajar','naek jaklingko gratis',
+        'jakarta tj 3500 krl 3000 jaklingko gratis bandung','tj sekarang gatau berapeeee','gratiss',
+    ],
+    'Kecepatan Layanan': [
+        'cepat', 'langsung', 'tepat waktu', 'waktu cepat', 'instan', 'waktu yang efisien', 'tidak menunggu lama',
+        'proses cepat', 'langsung siap', 'sudah tersedia', 'tanpa menunggu lama', 'langsung berangkat',
+        'cepat tanggap', 'tepat waktu', 'proses efisien', 'tanpa delay', 'cepat tanggap', 'proses berlangsung cepat',
+        'cepat naik jaklingko', 'langsung berangkat jaklingko', 'jaklingko tanpa menunggu lama',
+    ],
+    'Fasilitas': [
+        'lengkap', 'moderen', 'terbaru', 'luas', 'fasilitas lengkap', 'fasilitas bagus', 'terupgrade', 'memadai',
+        'fasilitas terbaru', 'fasilitas nyaman', 'semua tersedia', 'terawat', 'semua fasilitas ada', 'tempat nyaman',
+        'fasilitas prima', 'fasilitas modern', 'terbaik', 'fasilitas canggih', 'fasilitas lengkap', 'kondisi fasilitas bagus',
+        'big appreciate udah maksimalin semua pintu csw lt 5 jadi k13 13b dan l13e','fasilitas modern jaklingko',
+        'fasilitas lengkap jaklingko', 'fasilitas terbaru jaklingko', 'fasilitas nyaman jaklingko',
+        'pt kereta api indonesia persero kembali melanjutkan transformasi','jaklingko pulo gadung',
+        'app jaklingko bisa pake qris','13 juli 1995 perjalanan kereta api argo lawu tujuan jakarta gambir solo balapan diresmikan',
+        'min kereta balik dari depok lama ke jakarta ada di jam berapa','njir beneran ada kereta jakartatokyo','min tolong info dong kereta jakartategal',
+        'jakarta soloyogya ada kereta','krl paling pagi dr tangerang ke jakarta tuh jam berapa ya',
+    ],
+    'Aksesibilitas': [
+        'mudah dijangkau', 'dekat', 'terhubung', 'akses mudah', 'akses langsung', 'dekat dengan stasiun',
+        'akses praktis', 'dekat dengan terminal', 'jalan mudah', 'akses langsung ke lokasi', 'lokasi terjangkau',
+        'akses mudah dijangkau', 'akses cepat', 'dekat halte', 'akses mudah dan cepat', 'akses yang lancar','location guide naik krl bogor jakarta kota turun di jakarta',
+        'akses terbuka', 'fasilitas akses mudah', 'akses mudah jaklingko', 'dekat halte jaklingko', 'akses langsung jaklingko',
+        'lokasi terjangkau jaklingko','akses tj s21 sama jaklingko 102 gampang','aklingko 93','liat jaklingko 51','ka 149 singasari blitar pasar senen jakarta',
+        'full kereta dr lenteng agung turun di jakarta kota trus','kereta manggarai kereta jakarta kota','saf021 arah juanda di deket halte bnn',
+        'halo min kereta cikuray 299 ekonomi','naik krl dari jakarta kota ke bogor','grafik perjalanan kereta api perjalanan dari serang dapat menggunakan commuter line merak',
+        'berdasarkan krl jakarta kotabogor keberangkatan pertama berangkat jam 0521','naik kereta panoramic dr arah jakarta ke bandung bisa',
+        'kereta jakarta kota terkhir keburu gak ya klo naik cikarang','rangkaian langka cc 206 13 51 cpn ft ka 300','min dari tanah abang bisa naik 5m',
+        'min naik jaklingko jak 47 dari terminal pasar','paling jaklingko jak48a','jaklingko uki lubang buaya','min kalo naik p11 dari cidangiang',
+        'guys ada yang tau ngga ya kalo dari bintaro ke kokas naik transportasinya','koridor utama bisa pakek 7 arah kampung',
+        'dari ciledug ke blok m naik skali trans jakarta kepala taurus dari ciledug mesti ke alam sutra dlu','kalo supaya bisa naik 8n',
+        'pengen nyobain transjakarta dari terminal bekasi ke blok m','mau tanya klo mau ke cibubur dr halte st palmerahst tnh abang',
+        'bub busway 5n ke pancoran','naek aja transjakarta 6h senenlebak bulus naek dari halte senen','izin bantu kak naik l13e arah kuningan turun di halte kuninhan',
+        'min info bus dr jl paso jagakarsa ke tangerang','min 5c masih bisa naik turun','coba naek dari ragunan halte yg perempatan simatupang',
+        'naik transjakarta aja kalo gitu turun di halte semanggi','terhantung cipayung dimananya dulu dari keb','min info donggg jaklingko 10a dan 10b',
+    ],
+    'Keamanan': [
+        'aman', 'terjamin', 'terlindungi', 'nyaman', 'sejahtera', 'lingkungan aman', 'keamanan terjaga',
+        'terpelihara', 'keamanan terjamin', 'tenang', 'keamanan tinggi', 'rasa aman', 'perlindungan', 'terlindungi dengan baik',
+        'keamanan stabil', 'terjaga', 'terlindungi', 'lingkungan aman dan nyaman','keamanan jaklingko terjaga', 'terlindungi naik jaklingko',
+        'lingkungan aman jaklingko',
+    ],
+    'Kondisi Cuaca/Suasana': [
+        'sejuk', 'panas', 'berangin', 'sunyi', 'tenang', 'fasilitas terbuka', 'cuaca cerah', 'suasana sejuk', 'nyaman cuacanya',
+        'cuaca mendukung', 'suhu nyaman', 'terik matahari', 'bersegera keluar', 'dingin', 'adem', 'suasana menyenangkan',
+        'suasana nyaman', 'ruang terbuka', 'bisa melihat langit','suasana nyaman jaklingko', 'cuaca mendukung naik jaklingko', 'suhu nyaman jaklingko',
+    ]
+
+
+}
+
+# PROBLEM KEYWORDS DICTIONARY - BISA DIISI NANTI
+problem_keywords= {
     'Keterlambatan': [
         'telat', 'terlambat', 'lambat', 'delay', 'nunggu', 'nungguin', 'ga dateng2', 'gk dtg dtg', 'gak nyampe',
         'gk dateng', 'ngetem', 'molor', 'lama banget', '1 jam lebih', 'kena delay', 'datengnya lama',
@@ -443,7 +526,21 @@ def detect_problems(text):
         'polri dan ypktb siapkan pemimpin masa depan lewat kereta kader','realistis maksimalkan transpatriot kalo emang gabisa',
     ]
     }
+# Fungsi untuk deteksi good aspects (positif/netral)
+def detect_good_aspects(text):
+    detected_good = []
+    text_lower = text.lower()
     
+    for aspect, keywords in good_keywords.items():
+        for keyword in keywords:
+            if keyword in text_lower:
+                detected_good.append(aspect)
+                break
+    
+    return list(set(detected_good))
+
+# Fungsi untuk deteksi problem
+def detect_problems(text):
     detected_problems = []
     text_lower = text.lower()
     
@@ -495,14 +592,24 @@ st.markdown("""
         font-weight: bold;
     }
     .problem-tag {
-        background-color: var(--secondary-background-color);
-        color: var(--text-color);
+        background-color: #f8d7da;
+        color: #721c24;
         padding: 4px 8px;
         border-radius: 12px;
         font-size: 0.75rem;
         margin: 2px;
         display: inline-block;
-        border: 1px solid var(--border-color);
+        border: 1px solid #f5c6cb;
+    }
+    .good-tag {
+        background-color: #d4edda;
+        color: #155724;
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        margin: 2px;
+        display: inline-block;
+        border: 1px solid #c3e6cb;
     }
     .metric-card {
         background-color: var(--card-background-color);
@@ -682,10 +789,15 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### ℹ️ Informasi")
     st.markdown("""
-    Dashboard ini menganalisis sentimen dan masalah pada transportasi Jakarta:
+    Dashboard ini menganalisis sentimen dan aspek pada transportasi Jakarta:
     - **JakLingko**: Mikrotrans terintegrasi
     - **TransJakarta**: Bus Rapid Transit  
     - **KRL**: Kereta Rel Listrik
+    
+    **Fitur:**
+    - Deteksi masalah untuk sentimen negatif
+    - Deteksi aspek positif/netral untuk sentimen baik
+    - Visualisasi adaptif berdasarkan sentimen
     """)
 
 # Global variable untuk menyimpan data baru
@@ -694,12 +806,19 @@ if 'new_comments' not in st.session_state:
 
 # Proses analisis komentar baru
 if analyze_btn and new_comment:
-    with st.spinner("Menganalisis sentimen dan masalah..."):
+    with st.spinner("Menganalisis sentimen dan aspek..."):
         # Analisis sentimen
         sentiment, confidence = analyze_sentiment(new_comment, tokenizer, model)
         
-        # Deteksi masalah
-        problems = detect_problems(new_comment)
+        # Deteksi masalah dan good aspects berdasarkan sentimen
+        if sentiment in ["Negatif"]:
+            detected_items = detect_problems(new_comment)
+            item_type = "Masalah"
+            item_title = "Masalah Terdeteksi"
+        else:  # Positif atau Netral
+            detected_items = detect_good_aspects(new_comment)
+            item_type = "Aspek Baik"
+            item_title = "Aspek Positif/Netral"
         
         # Tampilkan hasil
         st.success("✅ Analisis selesai!")
@@ -729,11 +848,11 @@ if analyze_btn and new_comment:
             ''', unsafe_allow_html=True)
         
         with col3:
-            problems_text = ", ".join(problems) if problems else "Tidak terdeteksi"
+            items_text = ", ".join(detected_items) if detected_items else "Tidak terdeteksi"
             st.markdown(f'''
             <div class="metric-card">
-                <h3>Masalah Terdeteksi</h3>
-                <p>{problems_text}</p>
+                <h3>{item_title}</h3>
+                <p>{items_text}</p>
             </div>
             ''', unsafe_allow_html=True)
         
@@ -742,8 +861,9 @@ if analyze_btn and new_comment:
             'Kategori': transport_category,
             'Tweet': new_comment,
             'Sentiment': sentiment,
-            'problem': str(problems),
-            'problems_clean': problems
+            'problem': str(detected_items),
+            'problems_clean': detected_items,
+            'is_positive': sentiment in ["Positif", "Netral"]
         }
         st.session_state.new_comments.append(new_comment_data)
         
@@ -807,45 +927,71 @@ def create_transport_tab(category, category_name):
         </div>
         ''', unsafe_allow_html=True)
     
-    # Visualisasi 1: Top Problems
-    st.markdown(f'<div class="sub-header">📊 Top 5 Masalah pada {category_name}</div>', unsafe_allow_html=True)
+    # Visualisasi Top Problems/Good Aspects berdasarkan sentimen
+    st.markdown(f'<div class="sub-header">📊 Top 5 Aspek pada {category_name}</div>', unsafe_allow_html=True)
     
-    # Extract all problems
-    all_problems = []
-    for problems in category_data['problems_clean']:
-        if problems:  # Only extend if problems is not empty
-            all_problems.extend(problems)
+    # Pisahkan data negatif dan positif/netral
+    negative_data = category_data[category_data['Sentiment'] == 'Negatif']
+    positive_neutral_data = category_data[category_data['Sentiment'].isin(['Positif', 'Netral'])]
     
-    if all_problems:
-        problem_counts = Counter(all_problems)
+    # Untuk data negatif: hitung masalah
+    negative_problems = []
+    for problems in negative_data['problems_clean']:
+        if problems:
+            negative_problems.extend(problems)
+    
+    # Untuk data positif/netral: hitung good aspects
+    positive_aspects = []
+    for aspects in positive_neutral_data['problems_clean']:
+        if aspects:
+            positive_aspects.extend(aspects)
+    
+    # Tampilkan chart yang sesuai
+    if negative_problems:
+        problem_counts = Counter(negative_problems)
         top_problems = problem_counts.most_common(5)
         
-        if top_problems:
-            problems_df = pd.DataFrame(top_problems, columns=['Problem', 'Count'])
-            
-            fig = px.bar(
-                problems_df, 
-                x='Count', 
-                y='Problem',
-                orientation='h',
-                title=f'Top 5 Masalah {category_name}',
-                color='Count',
-                color_continuous_scale='blues'
-            )
-            fig.update_layout(
-                showlegend=False, 
-                yaxis={'categoryorder':'total ascending'},
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                font=dict(color='var(--text-color)')
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("ℹ️ Tidak ada masalah yang terdeteksi dalam data")
+        problems_df = pd.DataFrame(top_problems, columns=['Aspek', 'Count'])
+        
+        fig = px.bar(
+            problems_df, 
+            x='Count', 
+            y='Aspek',
+            orientation='h',
+            title=f'Top 5 Masalah {category_name} (Sentimen Negatif)',
+            color='Count',
+            color_continuous_scale='reds'
+        )
+    elif positive_aspects:
+        aspect_counts = Counter(positive_aspects)
+        top_aspects = aspect_counts.most_common(5)
+        
+        aspects_df = pd.DataFrame(top_aspects, columns=['Aspek', 'Count'])
+        
+        fig = px.bar(
+            aspects_df, 
+            x='Count', 
+            y='Aspek',
+            orientation='h',
+            title=f'Top 5 Aspek Positif/Netral {category_name}',
+            color='Count',
+            color_continuous_scale='greens'
+        )
     else:
-        st.info("ℹ️ Belum ada data masalah yang terdeteksi")
+        st.info("ℹ️ Belum ada data aspek yang terdeteksi")
+        fig = None
     
-    # Visualisasi 2: Layout columns
+    if fig:
+        fig.update_layout(
+            showlegend=False, 
+            yaxis={'categoryorder':'total ascending'},
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            font=dict(color='var(--text-color)')
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # Visualisasi distribusi sentimen dan tren
     col1, col2 = st.columns([2, 1])
     
     with col1:
@@ -874,36 +1020,41 @@ def create_transport_tab(category, category_name):
             st.info("ℹ️ Tidak ada data sentimen")
     
     with col2:
-        st.markdown(f'<div class="sub-header">🔍 Tren Masalah</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="sub-header">🔍 Tren Aspek</div>', unsafe_allow_html=True)
         
-        if all_problems:
-            # Problem frequency table
-            problem_freq = pd.DataFrame(problem_counts.most_common(10), columns=['Problem', 'Frekuensi'])
-            st.dataframe(problem_freq, use_container_width=True, height=300)
+        all_aspects = negative_problems + positive_aspects
+        if all_aspects:
+            aspect_freq = pd.DataFrame(Counter(all_aspects).most_common(10), columns=['Aspek', 'Frekuensi'])
+            st.dataframe(aspect_freq, use_container_width=True, height=300)
         else:
-            st.info("ℹ️ Belum ada data masalah")
+            st.info("ℹ️ Belum ada data aspek")
     
-    # Tweet terbaru - FIXED DISPLAY
-        # Tweet terbaru - Hanya tampilkan yang memiliki problem
+    # Tweet terbaru - Hanya tampilkan yang memiliki aspek terdeteksi
     st.markdown(f'<div class="sub-header">💬 Tweet Terbaru tentang {category_name}</div>', unsafe_allow_html=True)
     
-    # Filter hanya tweet yang memiliki problem
-    tweets_with_problems = category_data[category_data['problems_clean'].apply(lambda x: len(x) > 0)]
+    # Filter hanya tweet yang memiliki aspek terdeteksi
+    tweets_with_aspects = category_data[category_data['problems_clean'].apply(lambda x: len(x) > 0)]
     
-    if not tweets_with_problems.empty:
-        recent_tweets = tweets_with_problems.tail(8).iloc[::-1]  # Reverse untuk dapat yang terbaru di atas
+    if not tweets_with_aspects.empty:
+        recent_tweets = tweets_with_aspects.tail(8).iloc[::-1]  # Reverse untuk dapat yang terbaru di atas
         
         for _, tweet in recent_tweets.iterrows():
             sentiment_class = f"sentiment-{tweet['Sentiment'].lower()}"
             
-            # Handle problems display safely
-            problems_html = ""
+            # Tentukan jenis tag berdasarkan sentimen
+            if tweet['Sentiment'] == 'Negatif':
+                tag_class = "problem-tag"
+            else:
+                tag_class = "good-tag"
+            
+            # Handle aspects display
+            aspects_html = ""
             if tweet['problems_clean'] and len(tweet['problems_clean']) > 0:
-                problems_html = "<div class='problems-container'>"
-                for problem in tweet['problems_clean']:
-                    if problem and str(problem).strip():  # Only add if problem is not empty
-                        problems_html += f'<span class="problem-tag">{problem}</span>'
-                problems_html += "</div>"
+                aspects_html = "<div class='problems-container'>"
+                for aspect in tweet['problems_clean']:
+                    if aspect and str(aspect).strip():
+                        aspects_html += f'<span class="{tag_class}">{aspect}</span>'
+                aspects_html += "</div>"
             
             # Highlight new comments
             is_new = any(tweet['Tweet'] == nc['Tweet'] for nc in st.session_state.new_comments)
@@ -915,15 +1066,19 @@ def create_transport_tab(category, category_name):
                 <p class="tweet-text">{tweet['Tweet']}</p>
                 <div class="tweet-footer">
                     <div class="problems-container">
-                        {problems_html}
+                        {aspects_html}
                     </div>
-        
+                    <div style="text-align: right; min-width: 80px;">
+                        <p class="{sentiment_class}" style="margin: 0; font-size: 0.8rem;">{tweet['Sentiment']}</p>
+                        {'<p style="margin: 0; font-size: 0.7rem; color: #ff6b6b;">🆕 Baru</p>' if is_new else ''}
+                    </div>
+                </div>
             </div>
             """
             
             st.markdown(tweet_html, unsafe_allow_html=True)
-   
-        
+    else:
+        st.info("ℹ️ Tidak ada tweet dengan aspek yang terdeteksi")
 
 # Isi masing-masing tab
 with tab1:
@@ -951,9 +1106,3 @@ if st.session_state.new_comments:
     if st.button("🔄 Reset Data Baru", type="secondary"):
         st.session_state.new_comments = []
         st.rerun()
-
-
-
-
-
-
