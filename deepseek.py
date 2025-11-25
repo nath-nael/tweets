@@ -1086,11 +1086,6 @@ def create_transport_tab(category, category_name):
                     <div class="problems-container">
                         {aspects_html}
                     </div>
-                    <div style="text-align: right; min-width: 80px;">
-                        <p class="{sentiment_class}" style="margin: 0; font-size: 0.8rem;">{tweet['Sentiment']}</p>
-                        {'<p style="margin: 0; font-size: 0.7rem; color: #ff6b6b;">🆕 Baru</p>' if is_new else ''}
-                    </div>
-                </div>
             </div>
             """
             
@@ -1170,6 +1165,7 @@ if st.session_state.new_comments:
     if st.button("🔄 Reset Data Baru", type="secondary"):
         st.session_state.new_comments = []
         st.rerun()
+
 
 
 
