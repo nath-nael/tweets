@@ -884,38 +884,50 @@ def create_transport_tab(category, category_name):
             st.info("ℹ️ Belum ada data masalah")
     
     # Tweet terbaru - FIXED DISPLAY
+        # Tweet terbaru - Hanya tampilkan yang memiliki problem
     st.markdown(f'<div class="sub-header">💬 Tweet Terbaru tentang {category_name}</div>', unsafe_allow_html=True)
     
-    recent_tweets = category_data.tail(6).iloc[::-1]  # Reverse untuk dapat yang terbaru di atas
+    # Filter hanya tweet yang memiliki problem
+    tweets_with_problems = category_data[category_data['problems_clean'].apply(lambda x: len(x) > 0)]
     
-    for _, tweet in recent_tweets.iterrows():
-        sentiment_class = f"sentiment-{tweet['Sentiment'].lower()}"
+    if not tweets_with_problems.empty:
+        recent_tweets = tweets_with_problems.tail(8).iloc[::-1]  # Reverse untuk dapat yang terbaru di atas
         
-        # Handle problems display safely
-        problems_html = ""
-        if tweet['problems_clean'] and len(tweet['problems_clean']) > 0:
-            problems_html = "<div class='problems-container'>"
-            for problem in tweet['problems_clean']:
-                if problem and str(problem).strip():  # Only add if problem is not empty
-                    problems_html += f'<span class="problem-tag">{problem}</span>'
-            problems_html += "</div>"
-        
-        # Highlight new comments
-        is_new = any(tweet['Tweet'] == nc['Tweet'] for nc in st.session_state.new_comments)
-        border_color = "#ff6b6b" if is_new else "var(--primary-color)"
-        
-        # Fixed HTML structure
-        tweet_html = f"""
-        <div class="tweet-card" style="border-left-color: {border_color};">
-            <p class="tweet-text">{tweet['Tweet']}</p>
-            <div class="tweet-footer">
-                <div class="problems-container">
-                    {problems_html}
+        for _, tweet in recent_tweets.iterrows():
+            sentiment_class = f"sentiment-{tweet['Sentiment'].lower()}"
+            
+            # Handle problems display safely
+            problems_html = ""
+            if tweet['problems_clean'] and len(tweet['problems_clean']) > 0:
+                problems_html = "<div class='problems-container'>"
+                for problem in tweet['problems_clean']:
+                    if problem and str(problem).strip():  # Only add if problem is not empty
+                        problems_html += f'<span class="problem-tag">{problem}</span>'
+                problems_html += "</div>"
+            
+            # Highlight new comments
+            is_new = any(tweet['Tweet'] == nc['Tweet'] for nc in st.session_state.new_comments)
+            border_color = "#ff6b6b" if is_new else "var(--primary-color)"
+            
+            # Fixed HTML structure
+            tweet_html = f"""
+            <div class="tweet-card" style="border-left-color: {border_color};">
+                <p class="tweet-text">{tweet['Tweet']}</p>
+                <div class="tweet-footer">
+                    <div class="problems-container">
+                        {problems_html}
+                    </div>
+                    <div style="text-align: right; min-width: 80px;">
+                        <p class="{sentiment_class}" style="margin: 0; font-size: 0.8rem;">{tweet['Sentiment']}</p>
+                        {'<p style="margin: 0; font-size: 0.7rem; color: #ff6b6b;">🆕 Baru</p>' if is_new else ''}
+                    </div>
                 </div>
-        </div>
-        """
+            </div>
+            """
+            
+            st.markdown(tweet_html, unsafe_allow_html=True)
+   
         
-        st.markdown(tweet_html, unsafe_allow_html=True)
 
 # Isi masing-masing tab
 with tab1:
@@ -943,5 +955,6 @@ if st.session_state.new_comments:
     if st.button("🔄 Reset Data Baru", type="secondary"):
         st.session_state.new_comments = []
         st.rerun()
+
 
 
